@@ -72,11 +72,11 @@ distribution.  Or maybe use "user root", if nothing else works.
 
 This section has been reverse-engineered from git logs
 
-* Codimp <contact@lithio.fr>: original rewrite
+Codimp <contact@lithio.fr>: original rewrite
 
-* Rowan Wookey <admin@rwky.net>: performance improvement
+Rowan Wookey <admin@rwky.net>: performance improvement
 
-* Olivier Mehani <shtrom@ssji.net>: Network support, ClientWrapper, general cleanup, multigraph
+Olivier Mehani <shtrom@ssji.net>: Network support, ClientWrapper, general cleanup, multigraph
 
 =head1 MAGIC MARKERS
 
@@ -142,15 +142,11 @@ class ClientWrapper:
 
     @cached_property
     @sorted_by_creation_date
-    def containers(self):
-        return self.client.containers.list()
-
-    @cached_property
-    @sorted_by_creation_date
     def all_containers(self):
-        return [c for c in self.client.containers.list(all=True)
-                if not self.exclude
-                or not self.exclude.search(c.name)]
+        return [
+            c for c in self.client.containers.list(all=True)
+            if (c.status == 'running') and (not self.exclude or not self.exclude.search(c.name))
+        ]
 
     @cached_property
     @sorted_by_creation_date
@@ -278,7 +274,7 @@ def get_container_stats(container, q):
 def parallel_container_stats(client):
     proc_list = []
     stats = {}
-    for container in client.containers:
+    for container in client.all_containers:
         q = Queue()
         p = Process(target=get_container_stats, args=(container, q))
         proc_list.append({'proc': p, 'queue': q, 'container': container})
@@ -298,8 +294,9 @@ def print_containers_cpu(client):
                         - float(stats["precpu_stats"]["system_cpu_usage"]))
         if system_delta > 0.0:
             cpu_percent = cpu_delta / system_delta * 100.0 * os.cpu_count()
-        print(container.name + '.value', cpu_percent)
-        print(container.name + '.extinfo', container_attributes(container))
+        clean_container_name = clean_fieldname(container.name)
+        print(clean_container_name + '.value', cpu_percent)
+        print(clean_container_name + '.extinfo', container_attributes(container))
 
 
 def print_containers_memory(client):
@@ -310,20 +307,23 @@ def print_containers_memory(client):
         else:
             memory_usage = stats['memory_stats']['usage']
             extinfo = 'Total memory usage'
-        print(container.name + '.value', memory_usage)
-        print(container.name + '.extinfo', container_attributes(container, extinfo))
+        clean_container_name = clean_fieldname(container.name)
+        print(clean_container_name + '.value', memory_usage)
+        print(clean_container_name + '.extinfo', container_attributes(container, extinfo))
 
 
 def print_containers_network(client):
     for container, stats in parallel_container_stats(client):
         tx_bytes = 0
         rx_bytes = 0
-        for data in stats['networks'].values():
-            tx_bytes += data['tx_bytes']
-            rx_bytes += data['rx_bytes']
-        print(container.name + '_up.value', tx_bytes)
-        print(container.name + '_down.value', rx_bytes)
-        print(container.name + '_up.extinfo', container_attributes(container))
+        if "networks" in stats:
+            for data in stats['networks'].values():
+                tx_bytes += data['tx_bytes']
+                rx_bytes += data['rx_bytes']
+        clean_container_name = clean_fieldname(container.name)
+        print(clean_container_name + '_up.value', tx_bytes)
+        print(clean_container_name + '_down.value', rx_bytes)
+        print(clean_container_name + '_up.extinfo', container_attributes(container))
 
 
 def volume_summary(volume):
